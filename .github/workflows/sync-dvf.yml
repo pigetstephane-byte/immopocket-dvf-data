@@ -7,6 +7,7 @@ on:
   push:
     paths:
       - "sync_dvf.py"
+      - "requirements.txt"
       - ".github/workflows/sync-dvf.yml"
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
           cache: pip
 
       - name: Installer les dépendances
-        run: pip install --disable-pip-version-check --quiet "pandas>=2" "requests>=2.31" "duckdb>=1"
+        run: pip install --disable-pip-version-check --quiet -r requirements.txt
 
       - name: Reconstruire le socle DVF
         run: python sync_dvf.py
