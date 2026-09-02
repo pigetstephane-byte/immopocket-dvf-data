@@ -1,0 +1,61 @@
+name: Synchronisation DVF publique
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+  push:
+    paths:
+      - "sync_dvf.py"
+      - ".github/workflows/sync-dvf.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dvf-public-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Charger le dépôt
+        uses: actions/checkout@v4
+
+      - name: Préparer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installer les dépendances
+        run: pip install --disable-pip-version-check --quiet "pandas>=2" "requests>=2.31" "duckdb>=1"
+
+      - name: Reconstruire le socle DVF
+        run: python sync_dvf.py
+
+      - name: Vérifier la base produite
+        run: |
+          python - <<'PY'
+          import duckdb
+          con = duckdb.connect("data/dvf_83.duckdb", read_only=True)
+          rows, latest = con.execute("select count(*), max(date_mutation) from mutations").fetchone()
+          con.close()
+          if rows < 1000 or latest is None:
+              raise SystemExit(f"Base DVF invalide: {rows} lignes, dernière mutation {latest}")
+          print(f"Base validée: {rows} lignes, dernière mutation {latest}")
+          PY
+
+      - name: Publier la mise à jour
+        run: |
+          git config user.name "dvf-sync-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/dvf_83.duckdb data/dvf_metadata.json
+          if git diff --cached --quiet; then
+            echo "Aucun changement DVF"
+          else
+            git commit -m "Mise à jour du socle DVF public"
+            git push
+          fi
